@@ -6,7 +6,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
-from threading import Event, current_thread
+from threading import Event, Timer, current_thread
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
@@ -21,7 +21,7 @@ class StartupTests(unittest.TestCase):
         self.addCleanup(EmbeddingService._load_model.cache_clear)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.config = Settings(app_mode="demo", database_path=Path(directory.name) / "cache.sqlite3")
+        self.config = Settings(app_mode="local", database_path=Path(directory.name) / "cache.sqlite3")
 
     def test_cold_import_and_api_creation_do_not_load_model(self):
         script = textwrap.dedent('''
@@ -141,7 +141,9 @@ class StartupTests(unittest.TestCase):
                     return [1.0, 0.0]
 
                 model.encode.side_effect = encode
-                with patch("src.embeddings.OnnxSentenceEncoder", side_effect=construct) as constructor:
+                # Simulate an early timer wakeup; the deadline must still fire.
+                with patch("src.embeddings.OnnxSentenceEncoder", side_effect=construct) as constructor, \
+                        patch("src.api.Timer", side_effect=lambda delay, callback: Timer(0, callback)):
                     app = create_app(settings=self.config, warmup_timeout_seconds=0.5)
                     with TestClient(app) as client:
                         try:

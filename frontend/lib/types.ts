@@ -7,6 +7,9 @@ export interface Capabilities {
   defaults: { provider: Provider; threshold: number; ttl_hours: number; isolate_by_model: boolean };
   evaluation_thresholds: number[];
   credentials: "server_environment_only";
+  controls: { free_form: boolean; settings_editable: boolean; clear_cache: boolean; evaluation: boolean };
+  demo_samples?: { id: string; label: string; question: string }[];
+  demo_notice?: string;
 }
 export interface QueryRequest {
   question: string;

@@ -44,7 +44,8 @@ events cannot establish actual billing or estimate completeness. Latency reducti
 uses the existing dashboard formula only when both hit and miss observations and
 a positive miss latency exist; otherwise it is null. Negative reductions are kept.
 
-Demo mode allows only Demo. Local mode allows Demo, OpenAI, Claude, Gemini and
+Public Demo mode allows only the backend-provided curated questions and Demo
+provider with `demo-rule-based`. Local mode allows Demo, OpenAI, Claude, Gemini and
 Ollama. Models can be overridden; Demo's model is fixed. Provider URLs and API
 credentials are server configuration only. Request models reject extra fields,
 including API keys; responses/validation errors never echo rejected values.
@@ -58,7 +59,7 @@ Errors have `{"error": {"code": "...", "message": "..."}}`: invalid requests
 adapter failures 500. Messages are fixed and exclude upstream exception details.
 The handlers follow FastAPI's [exception handler mechanism](https://fastapi.tiangolo.com/tutorial/handling-errors/).
 
-This is a local backend, without authentication, tenant isolation, rate limiting,
+Local Mode is a local backend, without authentication, tenant isolation, rate limiting,
 or CORS configuration. It retains SQLite's linear scan, non-atomic concurrent
 miss behavior and separate entry/event writes. Resource initialization starts automatically in a background thread
 once per application process; Render startup loads the build-prepared model locally without downloading it. Liveness is available without waiting. Query, evaluation, and cache operations return structured HTTP 503 errors until ready. A failed warm-up stays failed until an operator restarts the service; requests never trigger loading or retry downloads. Evaluation
@@ -145,3 +146,51 @@ persisted PyTorch embeddings. A fresh-process API test blocks PyTorch,
 Transformers, SentenceTransformer, Hugging Face Hub and external network access.
 Without local artifacts/reference configuration these integration tests explicitly
 skip; ordinary parity/unit tests require no downloads.
+
+## Public Demo / Full Local Mode
+
+Set `APP_MODE=demo` on the public Render deployment. `APP_MODE=local` or an omitted
+mode preserves full free-form local functionality. `/capabilities` is the source
+of truth for the resolved mode, editable controls and request library; neither
+the browser nor proxy guesses mode from the hostname.
+
+Public Demo locks threshold to 0.84, TTL to 0 (canonical records do not expire),
+provider/model to Demo / demo-rule-based, and provider/model isolation to true.
+Only these exact request texts are accepted:
+
+| Sample | Question | First outcome | Measured cosine |
+| --- | --- | --- | --- |
+| Exact reuse | What is semantic caching? | exact | Not measured for exact lookup |
+| Semantic reuse | Explain semantic caching. | semantic | 0.944134 |
+| New intent | What is a vector database? | miss | 0.261914 |
+| Reuse / cost saving | How does a semantic cache lower LLM API costs? | semantic | 0.916593 |
+
+These questions come from the existing evaluation dataset. Tests measure their
+real ONNX/SQLite outcomes; labels never control the returned hit type. A miss
+performs the normal Demo provider generation and cache write. Repeating New
+intent in the same visit therefore produces a real exact hit.
+
+After the model is warm, the backend idempotently seeds two canonical entries:
+`What is semantic caching?` and `How does semantic caching reduce LLM costs?`.
+Seeds use real embeddings and Demo responses, without fabricating query events.
+The template is a separate `<database-stem>.public-demo-v1.sqlite3` file. Local
+data is never seeded, cleared, or overwritten.
+
+An opaque HttpOnly, SameSite=Lax `cache_flow_demo` cookie identifies each visitor's
+isolated SQLite copy of the seed template. The frontend proxy forwards only that
+cookie; no authorization headers or unrelated cookies are forwarded. A visitor's
+queries, access counts and metrics persist across requests/refreshes, while new
+visitors start with the same seed state. Public sandboxes expire after an hour
+of inactivity; a maximum of 128 retained sandboxes bounds storage allocation.
+At capacity the backend returns a sanitized busy response. Use one Uvicorn worker
+as shown above. This is a curated sandbox identifier, not user authentication.
+
+Public free-form prompts, external providers/models, custom URLs, credentials,
+changed settings and uploaded evaluation data are rejected server-side. Clear
+cache returns HTTP 403. Fixed-threshold evaluation remains available using only
+the existing local 36-pair dataset. Local Mode keeps all providers, controls,
+cache inspection/clearing and configurable evaluation, with unchanged persistence.
+
+`tests.test_public_demo` covers capabilities, restrictions, real sample outcomes,
+per-visitor isolation, seeding idempotence and Local Mode preservation. Prepare
+the ONNX artifacts before running these integration tests.

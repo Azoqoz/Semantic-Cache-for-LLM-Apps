@@ -68,7 +68,7 @@ class OnnxStartupTests(unittest.TestCase):
             from src.config import Settings
             from unittest.mock import patch
             with tempfile.TemporaryDirectory() as directory:
-                app = create_app(settings=Settings(app_mode='demo', database_path=Path(directory)/'cache.sqlite3'))
+                app = create_app(settings=Settings(app_mode='local', database_path=Path(directory)/'cache.sqlite3'))
                 with TestClient(app) as client:
                     assert client.get('/health').status_code == 200
                     assert app.state.warmup_complete.wait(30)

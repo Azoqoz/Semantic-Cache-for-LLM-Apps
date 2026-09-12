@@ -2,14 +2,14 @@ import { useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import type { EvaluationReport } from "@/lib/types";
 
-export function Quality({ defaultThreshold, disabled }: { defaultThreshold: number; disabled: boolean }) {
+export function Quality({ defaultThreshold, disabled, fixedThreshold = false }: { defaultThreshold: number; disabled: boolean; fixedThreshold?: boolean }) {
   const [threshold, setThreshold] = useState(defaultThreshold);
   const [usedThreshold, setUsedThreshold] = useState<number | null>(null);
   const [report, setReport] = useState<EvaluationReport | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   async function evaluate() {
-    if (pending) return;
+    if (pending || disabled) return;
     setPending(true); setError("");
     try { const result = await api.evaluate(threshold); setReport(result); setUsedThreshold(threshold); }
     catch (error) { setError(errorMessage(error)); }
@@ -18,7 +18,7 @@ export function Quality({ defaultThreshold, disabled }: { defaultThreshold: numb
   return <section id="quality" className="quality section-anchor">
     <div className="section-title"><div><p className="eyebrow">03 / TEST THE ASSUMPTION</p><h2>Cache quality</h2></div><span className="quality-stamp">MEASURE.<br />THEN REUSE.</span></div>
     <div className="quality-intro"><p>Similar words don’t always mean the same thing.</p><span>Evaluate labeled pairs before choosing a reuse threshold.</span></div>
-    <div className="quality-controls"><label htmlFor="quality-threshold">Evaluation threshold <output className="mono">{threshold.toFixed(2)}</output><input id="quality-threshold" type="range" min="0" max="1" step="0.01" value={threshold} disabled={pending} onChange={event => setThreshold(Number(event.target.value))} /></label><span className="subtle">Independent of your query settings.</span><button onClick={evaluate} disabled={disabled || pending}>{pending ? "Evaluating pairs…" : report ? "Run evaluation again ↗" : "Run quality check ↗"}</button></div>
+    <div className="quality-controls"><label htmlFor="quality-threshold">Evaluation threshold <output className="mono">{threshold.toFixed(2)}</output><input id="quality-threshold" type="range" min="0" max="1" step="0.01" value={threshold} disabled={pending || fixedThreshold} onChange={event => setThreshold(Number(event.target.value))} /></label><span className="subtle">{fixedThreshold ? "Fixed Public Demo threshold. Local labeled pairs only." : "Independent of your query settings."}</span><button onClick={evaluate} disabled={disabled || pending}>{pending ? "Evaluating pairs…" : report ? "Run evaluation again ↗" : "Run quality check ↗"}</button></div>
     {error && <p role="alert" className="error-message">{error}</p>}
     <div aria-live="polite" aria-busy={pending}>{pending && <p className="pending-note"><span className="spinner" /> Embedding and scoring the evaluation dataset. Results appear when complete.</p>}
       {!report && !pending && <div className="quality-empty"><span>01 <b>Embed pairs</b></span><span>02 <b>Compare intent</b></span><span>03 <b>Measure precision</b></span></div>}

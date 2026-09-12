@@ -6,8 +6,10 @@ from threading import Event, Lock, Thread, Timer
 from time import monotonic
 from math import isfinite
 from typing import Literal
+from uuid import uuid4
+import re
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +18,7 @@ from starlette.exceptions import HTTPException
 from src.application import ApplicationError, CacheApplication, QueryCommand, create_application
 from src.config import Settings, settings as default_settings
 from src.embeddings import log_warmup
+from src.public_demo import DemoSessions, seed_demo, DEMO_SAMPLES
 
 
 class QueryBody(BaseModel):
@@ -31,6 +34,15 @@ class QueryBody(BaseModel):
 class EvaluationBody(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     threshold: float | None = Field(default=None, ge=0, le=1)
+
+
+DemoQuestion = Literal[tuple(sample.question for sample in DEMO_SAMPLES)]
+
+
+class DemoQueryBody(QueryBody):
+    question: DemoQuestion
+    provider: Literal["Demo"] = "Demo"
+    model: Literal["demo-rule-based"] | None = None
 
 
 class QueryResponse(BaseModel):
@@ -63,6 +75,7 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
     started_at = None
     timer = None
     failure_message = ApplicationError.MESSAGES["model_initialization_failed"]
+    demo_sessions = None
 
     def expire_locked() -> None:
         nonlocal state, failure_message
@@ -73,11 +86,18 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
             complete.set()
 
     def expire() -> None:
-        with initialization_lock:
-            expire_locked()
+        # Timer/OS waits can wake just before a monotonic deadline. Do not let
+        # an early wakeup permanently abandon the readiness watchdog.
+        while not complete.is_set():
+            with initialization_lock:
+                expire_locked()
+                if state != "loading":
+                    return
+                remaining = warmup_timeout_seconds - (monotonic() - started_at)
+            complete.wait(max(0.001, remaining))
 
     def warm_engine() -> None:
-        nonlocal application, state
+        nonlocal application, state, demo_sessions
         try:
             log_warmup("thread_started", started_at)
             log_warmup("creating_application", started_at)
@@ -94,6 +114,10 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
             log_warmup("first_test_encode", started_at)
             service.embeddings.encode("Semantic cache warm-up.")
             log_warmup("first_test_encode_complete", started_at)
+            if config.app_mode == "demo":
+                log_warmup("seeding_public_demo", started_at)
+                seed_demo(service)
+                demo_sessions = DemoSessions(service)
             with initialization_lock:
                 expire_locked()
                 if state == "loading":
@@ -133,18 +157,30 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
     api = FastAPI(title="Semantic Cache API", version="1.0.0", lifespan=lifespan)
     api.state.warmup_complete = complete
 
-    def get_application() -> CacheApplication:
+    def visitor_token(request: Request, response: Response) -> str:
+        token = request.cookies.get("cache_flow_demo", "")
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            token = uuid4().hex
+        response.set_cookie("cache_flow_demo", token, max_age=3600, httponly=True,
+                            secure=request.url.scheme == "https", samesite="lax")
+        return token
+
+    def get_application(request: Request, response: Response) -> CacheApplication:
         with initialization_lock:
             expire_locked()
             if state == "loading":
                 raise ApplicationError("service_warming")
             if state == "error":
                 raise ApplicationError("model_initialization_failed")
-            return application
+            service = application
+        if config.app_mode == "demo":
+            return demo_sessions.for_visitor(visitor_token(request, response))
+        return service
 
     @api.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError):
         status = {"invalid_request": 422, "provider_configuration": 400, "operation_failed": 503,
+                  "demo_restricted": 403, "demo_read_only": 403, "demo_capacity": 503,
                   "service_warming": 503, "model_initialization_failed": 503}[exc.code]
         return JSONResponse(status_code=status, content={"error": {"code": exc.code, "message": str(exc)}})
 
@@ -181,13 +217,20 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
             return {"status": "ready" if state == "ready" else "warming"}
 
     @api.get("/capabilities")
-    def capabilities():
+    def capabilities(request: Request, response: Response):
         # No database or embedding initialization needed for capabilities.
+        if config.app_mode == "demo":
+            visitor_token(request, response)
         return CacheApplication.describe_capabilities(config)
 
-    @api.post("/query", response_model=QueryResponse)
-    def query(body: QueryBody, service: CacheApplication = Depends(get_application)):
-        return service.query(QueryCommand(**body.model_dump()))
+    if config.app_mode == "demo":
+        @api.post("/query", response_model=QueryResponse)
+        def demo_query(body: DemoQueryBody, service: CacheApplication = Depends(get_application)):
+            return service.query(QueryCommand(**body.model_dump()))
+    else:
+        @api.post("/query", response_model=QueryResponse)
+        def query(body: QueryBody, service: CacheApplication = Depends(get_application)):
+            return service.query(QueryCommand(**body.model_dump()))
 
     @api.get("/cache")
     def cache(limit: int = Query(default=100, ge=1, le=1000),

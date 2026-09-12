@@ -5,6 +5,9 @@ export class ApiError extends Error {
 }
 
 const messages: Record<string, string> = {
+  demo_restricted: "Choose a curated Public Demo request. Demo settings are fixed.",
+  demo_read_only: "Cache clearing is available in Local Mode only.",
+  demo_capacity: "The public demo is busy. Please try again later.",
   service_warming: "Warming semantic engine… Actions will be available when ready.",
   model_initialization_failed: "The semantic engine could not initialize. Restart the backend service to retry.",
   invalid_request: "Check your prompt and settings, then try again.",
@@ -18,7 +21,7 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
   let response: Response;
   try {
     response = await fetch(`/api/backend${path}`, {
-      method, cache: "no-store", credentials: "omit",
+      method, cache: "no-store", credentials: "same-origin",
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(185_000),

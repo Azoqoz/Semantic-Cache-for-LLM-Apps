@@ -6,9 +6,10 @@ function age(value: string, now: number) {
   return minutes < 1 ? "Just now" : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
 }
 
-export function Ledger({ snapshot, loading, clearing, error, disabled, refresh, clear }: {
+export function Ledger({ snapshot, loading, clearing, error, disabled, refresh, clear, canClear = true }: {
   snapshot: CacheSnapshot | null; loading: boolean; clearing: boolean; error: string; disabled: boolean;
   refresh: () => void; clear: () => Promise<boolean>;
+  canClear?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [filter, setFilter] = useState("");
@@ -22,7 +23,7 @@ export function Ledger({ snapshot, loading, clearing, error, disabled, refresh, 
   const entries = snapshot?.entries.filter(entry => `${entry.question} ${entry.provider} ${entry.model} ${entry.id}`.toLowerCase().includes(filter.toLowerCase())) ?? [];
   async function confirmClear() { if (await clear()) dialog.current?.close(); }
   return <section id="ledger" className="ledger section-anchor">
-    <div className="section-title"><div><p className="eyebrow">02 / PERSISTENT MEMORY</p><h2>Cache ledger<span className="count">{snapshot?.metrics.cache_entries ?? "—"}</span></h2></div><div className="actions"><button className="secondary" onClick={refresh} disabled={disabled || loading || clearing}>{loading ? "Refreshing…" : "Refresh ↻"}</button><button className="text-button danger" disabled={disabled || loading || clearing || !snapshot || (snapshot.metrics.cache_entries === 0 && snapshot.metrics.total_queries === 0)} onClick={() => dialog.current?.showModal()}>Clear cache</button></div></div>
+    <div className="section-title"><div><p className="eyebrow">02 / PERSISTENT MEMORY</p><h2>Cache ledger<span className="count">{snapshot?.metrics.cache_entries ?? "—"}</span></h2></div><div className="actions"><button className="secondary" onClick={refresh} disabled={disabled || loading || clearing}>{loading ? "Refreshing…" : "Refresh ↻"}</button>{canClear && <button className="text-button danger" disabled={disabled || loading || clearing || !snapshot || (snapshot.metrics.cache_entries === 0 && snapshot.metrics.total_queries === 0)} onClick={() => dialog.current?.showModal()}>Clear cache</button>}</div></div>
     <div className="ledger-toolbar"><p>SQLite persistence <span>/</span> Entries are scoped by provider + model when isolation is on.</p><label className="search"><span className="sr-only">Filter cache entries</span><input value={filter} onChange={event => setFilter(event.target.value)} placeholder="Find prompt, model or ID" type="search" /></label></div>
     {error && <p className="error-message" role="alert">{error}</p>}
     <div className="table-scroll" tabIndex={0} role="region" aria-label="Cache entries" aria-busy={loading}>
@@ -35,6 +36,6 @@ export function Ledger({ snapshot, loading, clearing, error, disabled, refresh, 
       {entries.length === 0 && <div className="empty-state"><span className="empty-symbol">{filter ? "⌕" : "∅"}</span><h3>{filter ? "No entries match." : loading ? "Opening the ledger…" : snapshot ? "A clean slate." : "The ledger is not available yet."}</h3><p>{filter ? "Try a different prompt or model." : snapshot ? "Send a question above. A cache miss creates the first record." : "Connect to the API to read persisted entries."}</p></div>}
     </div>
     <div className="ledger-foot"><span>{entries.length} shown{snapshot && snapshot.metrics.cache_entries > snapshot.entries.length ? ` · latest ${snapshot.entries.length} of ${snapshot.metrics.cache_entries} loaded` : ""}</span><span>Expired entries stay in the ledger but cannot match.</span></div>
-    <dialog ref={dialog} className="confirm-dialog" onCancel={event => { if (clearing) event.preventDefault(); }} aria-labelledby="clear-title"><p className="eyebrow">RESET / SHARED CACHE</p><h2 id="clear-title">Start from zero?</h2><p>This permanently removes all cached answers and query metrics, across every provider and model. Evaluation results are separate.</p>{error && <p className="error-message" role="alert">{error}</p>}<div className="actions"><button className="secondary" disabled={clearing} onClick={() => dialog.current?.close()} autoFocus>Keep the cache</button><button className="danger-button" disabled={clearing} onClick={confirmClear}>{clearing ? "Clearing…" : "Clear everything"}</button></div></dialog>
+    {canClear && <dialog ref={dialog} className="confirm-dialog" onCancel={event => { if (clearing) event.preventDefault(); }} aria-labelledby="clear-title"><p className="eyebrow">RESET / SHARED CACHE</p><h2 id="clear-title">Start from zero?</h2><p>This permanently removes all cached answers and query metrics, across every provider and model. Evaluation results are separate.</p>{error && <p className="error-message" role="alert">{error}</p>}<div className="actions"><button className="secondary" disabled={clearing} onClick={() => dialog.current?.close()} autoFocus>Keep the cache</button><button className="danger-button" disabled={clearing} onClick={confirmClear}>{clearing ? "Clearing…" : "Clear everything"}</button></div></dialog>}
   </section>;
 }

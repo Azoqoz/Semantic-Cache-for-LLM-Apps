@@ -15,12 +15,16 @@ from src.embeddings import EmbeddingService
 from src.evaluation import COMPARISON_THRESHOLDS, build_evaluation_report
 from src.llm_providers import ProviderConfigurationError, build_provider
 from src.semantic_cache import SemanticCacheService
+from src.public_demo import DEMO_THRESHOLD, DEMO_TTL_HOURS, DEMO_MODEL, DEMO_SAMPLES, DEMO_QUESTIONS
 
 
 class ApplicationError(Exception):
     """An allowlisted public error; never contains upstream exception text."""
 
     MESSAGES = {
+        "demo_restricted": "Public Demo accepts only the curated requests and fixed settings.",
+        "demo_read_only": "Cache clearing is available in Local Mode only.",
+        "demo_capacity": "The public demo is busy. Please try again later.",
         "service_warming": "The semantic engine is warming. Please try again when ready.",
         "model_initialization_failed": "The semantic engine could not initialize. Restart the service to retry.",
         "invalid_request": "Check the request fields and supported values.",
@@ -75,14 +79,21 @@ class CacheApplication:
                   "Claude": settings.claude_model, "Gemini": settings.gemini_model,
                   "Ollama": settings.ollama_model}
         names = ["Demo"] if settings.app_mode == "demo" else list(models)
-        return {
+        demo = settings.app_mode == "demo"
+        result = {
             "app_mode": settings.app_mode,
             "providers": [{"name": name, "default_model": models[name]} for name in names],
-            "defaults": {"provider": "Demo", "threshold": settings.default_threshold,
-                         "ttl_hours": settings.default_ttl_hours, "isolate_by_model": True},
-            "evaluation_thresholds": list(COMPARISON_THRESHOLDS),
+            "defaults": {"provider": "Demo", "threshold": DEMO_THRESHOLD if demo else settings.default_threshold,
+                         "ttl_hours": DEMO_TTL_HOURS if demo else settings.default_ttl_hours, "isolate_by_model": True},
+            "evaluation_thresholds": [DEMO_THRESHOLD] if demo else list(COMPARISON_THRESHOLDS),
             "credentials": "server_environment_only",
+            "controls": {"free_form": not demo, "settings_editable": not demo,
+                         "clear_cache": not demo, "evaluation": True},
         }
+        if demo:
+            result["demo_samples"] = [asdict(sample) for sample in DEMO_SAMPLES]
+            result["demo_notice"] = "Curated requests in your own seeded cache. New intent misses once; repeat it for exact reuse. Idle demos expire after one hour."
+        return result
 
     @staticmethod
     def _validate_threshold(threshold):
@@ -91,6 +102,15 @@ class CacheApplication:
 
     @safe_operation
     def query(self, command: QueryCommand) -> dict:
+        if self.settings.app_mode == "demo":
+            if command.provider != "Demo":
+                raise ApplicationError("provider_configuration")
+            if (command.question not in DEMO_QUESTIONS or command.model not in (None, DEMO_MODEL)
+                    or command.threshold not in (None, DEMO_THRESHOLD)
+                    or command.ttl_hours not in (None, DEMO_TTL_HOURS)
+                    or command.isolate_by_model is not True):
+                raise ApplicationError("demo_restricted")
+            command = QueryCommand(command.question, "Demo", DEMO_MODEL, DEMO_THRESHOLD, DEMO_TTL_HOURS, True)
         threshold = self.settings.default_threshold if command.threshold is None else command.threshold
         ttl = self.settings.default_ttl_hours if command.ttl_hours is None else command.ttl_hours
         self._validate_threshold(threshold)
@@ -138,11 +158,17 @@ class CacheApplication:
 
     @safe_operation
     def clear_cache(self) -> dict:
+        if self.settings.app_mode == "demo":
+            raise ApplicationError("demo_read_only")
         self.cache.clear()
         return {"cleared": True}
 
     @safe_operation
     def evaluate(self, threshold: float | None = None) -> dict:
+        if self.settings.app_mode == "demo":
+            if threshold not in (None, DEMO_THRESHOLD):
+                raise ApplicationError("demo_restricted")
+            threshold = DEMO_THRESHOLD
         threshold = self.settings.default_threshold if threshold is None else threshold
         self._validate_threshold(threshold)
         return asdict(build_evaluation_report(self.embeddings, threshold))
@@ -150,5 +176,8 @@ class CacheApplication:
 
 def create_application(settings: Settings) -> CacheApplication:
     embeddings = EmbeddingService(settings.embedding_model, lazy=True)
-    cache = SQLiteSemanticCache(settings.database_path, embeddings)
+    database_path = settings.database_path
+    if settings.app_mode == "demo":
+        database_path = database_path.with_name(database_path.stem + ".public-demo-v1.sqlite3")
+    cache = SQLiteSemanticCache(database_path, embeddings)
     return CacheApplication(settings, cache, embeddings)
