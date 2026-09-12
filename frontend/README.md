@@ -32,7 +32,7 @@ Provider credentials stay exclusively in the backend environment. Do not put
 them in a `NEXT_PUBLIC_` variable. Hosted visitor use requires the backend's
 `APP_MODE=demo`; mode is read from capabilities, never overridden in the browser.
 
-The allowlisted `/api/backend/*` route handler proxies only the six supported
+The allowlisted `/api/backend/*` route handler proxies only the seven supported
 operations. Browser calls are same-origin, so no backend CORS changes are needed.
 It forwards no cookies or authorization headers, does not log request bodies or
 upstream errors, and never caches API results. Backend connectivity errors become
@@ -87,3 +87,5 @@ The existing backend has no authentication or tenant isolation. Public deploymen
 shares cache records and the clear operation across visitors; deploy only data and
 providers intended for public access. Existing SQLite concurrency, cost-estimation,
 and synchronous inference limitations remain unchanged.
+
+The frontend polls /ready every two seconds after liveness succeeds, stopping on ready or error. While warming, inference actions are disabled; model failures are distinct from network errors. Check readiness only reads status; an operator must restart the backend to retry a failed warm-up.

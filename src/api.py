@@ -1,7 +1,8 @@
 """Run locally: python -m uvicorn src.api:app --host 127.0.0.1 --port 8000."""
 from __future__ import annotations
 
-from threading import Lock
+from contextlib import asynccontextmanager
+from threading import Event, Lock, Thread
 from typing import Literal
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -49,22 +50,51 @@ class QueryResponse(BaseModel):
 
 def create_app(application: CacheApplication | None = None, settings: Settings | None = None) -> FastAPI:
     config = application.settings if application is not None else (settings or default_settings)
-    api = FastAPI(title="Semantic Cache API", version="1.0.0")
     initialization_lock = Lock()
+    state = "loading"
+    started = False
+    complete = Event()
+
+    def warm_engine() -> None:
+        nonlocal application, state
+        try:
+            service = application if application is not None else create_application(config)
+            service.embeddings.warm_up()
+            with initialization_lock:
+                application = service
+                state = "ready"
+        except Exception:
+            # Never log provider/model exceptions or expose their contents.
+            with initialization_lock:
+                state = "error"
+        finally:
+            complete.set()
+
+    @asynccontextmanager
+    async def lifespan(api: FastAPI):
+        nonlocal started
+        with initialization_lock:
+            if not started:
+                started = True
+                Thread(target=warm_engine, name="semantic-engine-warmup", daemon=True).start()
+        # No inference work is awaited before ASGI startup completes / port bind.
+        yield
+
+    api = FastAPI(title="Semantic Cache API", version="1.0.0", lifespan=lifespan)
+    api.state.warmup_complete = complete
 
     def get_application() -> CacheApplication:
-        nonlocal application
         with initialization_lock:
-            if application is None:
-                try:
-                    application = create_application(config)
-                except Exception:
-                    raise ApplicationError("operation_failed") from None
-        return application
+            if state == "loading":
+                raise ApplicationError("service_warming")
+            if state == "error":
+                raise ApplicationError("model_initialization_failed")
+            return application
 
     @api.exception_handler(ApplicationError)
     async def application_error(request: Request, exc: ApplicationError):
-        status = {"invalid_request": 422, "provider_configuration": 400, "operation_failed": 503}[exc.code]
+        status = {"invalid_request": 422, "provider_configuration": 400, "operation_failed": 503,
+                  "service_warming": 503, "model_initialization_failed": 503}[exc.code]
         return JSONResponse(status_code=status, content={"error": {"code": exc.code, "message": str(exc)}})
 
     @api.exception_handler(RequestValidationError)
@@ -90,6 +120,13 @@ def create_app(application: CacheApplication | None = None, settings: Settings |
     @api.get("/health")
     def health():
         return {"status": "ok", "check": "liveness"}
+
+    @api.get("/ready")
+    def ready():
+        with initialization_lock:
+            if state == "error":
+                return {"status": "error", "message": ApplicationError.MESSAGES["model_initialization_failed"]}
+            return {"status": "ready" if state == "ready" else "warming"}
 
     @api.get("/capabilities")
     def capabilities():

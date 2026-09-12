@@ -30,6 +30,12 @@ class EmbeddingService:
     def _load_model(model_name: str) -> SentenceTransformerModel:
         return SentenceTransformer(model_name)
 
+    def warm_up(self) -> None:
+        """Initialize once without making a query or recording cache activity."""
+        with self._initialization_lock:
+            if self.model is None:
+                self.model = self._load_model(self.model_name)
+
     def encode(self, text: str) -> list[float]:
         cleaned = text.strip()
         if not cleaned:
@@ -37,10 +43,8 @@ class EmbeddingService:
 
         # API requests share this service. A failed load remains retryable, and
         # concurrent first requests cannot construct multiple models here.
-        with self._initialization_lock:
-            if self.model is None:
-                self.model = self._load_model(self.model_name)
-            model = self.model
+        self.warm_up()
+        model = self.model
 
         vector = model.encode(
             cleaned,

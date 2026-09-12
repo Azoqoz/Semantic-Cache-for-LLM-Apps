@@ -21,6 +21,8 @@ class ApplicationError(Exception):
     """An allowlisted public error; never contains upstream exception text."""
 
     MESSAGES = {
+        "service_warming": "The semantic engine is warming. Please try again when ready.",
+        "model_initialization_failed": "The semantic engine could not initialize. Restart the service to retry.",
         "invalid_request": "Check the request fields and supported values.",
         "provider_configuration": "The provider is disabled or not configured on the server.",
         "operation_failed": "The operation failed. Check the server configuration and try again.",

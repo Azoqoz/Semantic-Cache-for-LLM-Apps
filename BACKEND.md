@@ -17,6 +17,7 @@ the same configured SQLite database by default.
 
 | Endpoint | Contract |
 | --- | --- |
+| `GET /ready` | Reports `warming`, `ready`, or a safe `error` message. Polling does not retry initialization. |
 | `GET /health` | Process liveness only; does not load embeddings or probe providers. |
 | `GET /capabilities` | Mode, allowed providers and default models, request defaults, evaluation thresholds. Allowed does not mean installed/configured/reachable. |
 | `POST /query` | JSON `question` required; optional `provider`, `model`, `threshold`, `ttl_hours`, `isolate_by_model`. Defaults come from settings; provider defaults to Demo and isolation to true. |
@@ -59,7 +60,7 @@ The handlers follow FastAPI's [exception handler mechanism](https://fastapi.tian
 
 This is a local backend, without authentication, tenant isolation, rate limiting,
 or CORS configuration. It retains SQLite's linear scan, non-atomic concurrent
-miss behavior and separate entry/event writes. Resource initialization is lazy
-per application process; first use may download the embedding model. Evaluation
+miss behavior and separate entry/event writes. Resource initialization starts automatically in a background thread
+once per application process; startup warm-up may download the embedding model. Liveness is available without waiting. Query, evaluation, and cache operations return structured HTTP 503 errors until ready. A failed warm-up stays failed until an operator restarts the service; requests never trigger loading or retry downloads. Evaluation
 is synchronous and recomputes embeddings. Tests use real SQLite and cosine math,
 with model inference and providers mocked; they do not verify live provider uptime.

@@ -13,6 +13,14 @@ async function request(path, method = "GET", body) {
 }
 assert.equal((await request("/health")).status, "ok");
 assert.equal((await request("/capabilities")).app_mode, "demo");
+const warmupDeadline = Date.now() + 180000;
+while (true) {
+  const readiness = await request("/ready");
+  if (readiness.status === "ready") break;
+  assert.equal(readiness.status, "warming", "The semantic engine failed to initialize");
+  assert.ok(Date.now() < warmupDeadline, "Warm-up timed out");
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
 assert.equal((await request("/cache", "DELETE")).cleared, true);
 const query = { question: "What is semantic caching?", provider: "Demo", threshold: .5, ttl_hours: 0, isolate_by_model: true };
 const miss = await request("/query", "POST", query);

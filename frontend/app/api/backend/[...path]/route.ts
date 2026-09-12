@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const allowed: Record<string, string[]> = {
-  health: ["GET"], capabilities: ["GET"], query: ["POST"], cache: ["GET", "DELETE"], evaluation: ["POST"],
+  health: ["GET"], ready: ["GET"], capabilities: ["GET"], query: ["POST"], cache: ["GET", "DELETE"], evaluation: ["POST"],
 };
 const safeError = (status: number, code: string) => Response.json({ error: { code } }, { status });
 

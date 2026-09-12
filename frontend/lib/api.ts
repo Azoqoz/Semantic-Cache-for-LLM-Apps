@@ -1,10 +1,12 @@
-import type { Capabilities, CacheSnapshot, QueryRequest, QueryResult, EvaluationReport } from "./types";
+import type { Capabilities, CacheSnapshot, QueryRequest, QueryResult, EvaluationReport, Readiness } from "./types";
 
 export class ApiError extends Error {
   constructor(public code: string, public status: number, message: string) { super(message); }
 }
 
 const messages: Record<string, string> = {
+  service_warming: "Warming semantic engine… Actions will be available when ready.",
+  model_initialization_failed: "The semantic engine could not initialize. Restart the backend service to retry.",
   invalid_request: "Check your prompt and settings, then try again.",
   provider_configuration: "This provider is disabled or needs configuration on the backend. Try Demo, or check the server environment.",
   operation_failed: "The backend could not finish this operation. Check the model or provider configuration before retrying.",
@@ -36,6 +38,7 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
 
 export const api = {
   health: () => request<{ status: string; check: string }>("/health"),
+  ready: () => request<Readiness>("/ready"),
   capabilities: () => request<Capabilities>("/capabilities"),
   query: (body: QueryRequest) => request<QueryResult>("/query", "POST", body),
   cache: () => request<CacheSnapshot>("/cache?limit=1000"),

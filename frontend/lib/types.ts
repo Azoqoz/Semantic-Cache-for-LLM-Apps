@@ -1,4 +1,5 @@
 export type Provider = "Demo" | "OpenAI" | "Claude" | "Gemini" | "Ollama";
+export type Readiness = { status: "warming" | "ready" } | { status: "error"; message: string };
 export type HitType = "exact" | "semantic" | "miss";
 export interface Capabilities {
   app_mode: "demo" | "local";

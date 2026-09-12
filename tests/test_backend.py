@@ -140,7 +140,9 @@ class ApplicationTests(BackendFixture):
 class APITests(BackendFixture):
     def setUp(self):
         super().setUp()
-        self.client = TestClient(create_app(self.service))
+        app = create_app(self.service)
+        self.client = self.enterContext(TestClient(app))
+        self.assertTrue(app.state.warmup_complete.wait(5))
         self.addCleanup(self.client.close)
 
     def test_http_query_cache_metrics_and_clear(self):
@@ -158,22 +160,28 @@ class APITests(BackendFixture):
         self.assertEqual(self.client.get("/cache").json()["metrics"]["total_queries"], 0)
 
     def test_health_and_capabilities_do_not_load_model_or_database(self):
+        # Do not enter lifespan: these endpoints must not initiate startup work.
         with patch("src.api.create_application") as factory:
-            with TestClient(create_app(settings=replace(self.settings, app_mode="demo"))) as client:
-                self.assertEqual(client.get("/health").json(), {"status": "ok", "check": "liveness"})
-                result = client.get("/capabilities").json()
-                self.assertEqual(result["providers"], [{"name": "Demo", "default_model": "demo-rule-based"}])
-                self.assertNotIn("database_path", result)
-                factory.assert_not_called()
+            client = TestClient(create_app(settings=replace(self.settings, app_mode="demo")))
+            self.addCleanup(client.close)
+            self.assertEqual(client.get("/health").json(), {"status": "ok", "check": "liveness"})
+            result = client.get("/capabilities").json()
+            self.assertEqual(result["providers"], [{"name": "Demo", "default_model": "demo-rule-based"}])
+            self.assertNotIn("database_path", result)
+            factory.assert_not_called()
 
-    def test_lazy_initialization_once_and_failure_is_safe(self):
+    def test_startup_initialization_once_and_failure_is_safe(self):
         with patch("src.api.create_application", return_value=self.service) as factory:
-            with TestClient(create_app(settings=self.settings)) as client:
+            app = create_app(settings=self.settings)
+            with TestClient(app) as client:
+                self.assertTrue(app.state.warmup_complete.wait(5))
                 self.assertEqual(client.get("/cache").status_code, 200)
                 self.assertEqual(client.get("/cache").status_code, 200)
             factory.assert_called_once_with(self.settings)
         with patch("src.api.create_application", side_effect=RuntimeError("secret-value")):
-            with TestClient(create_app(settings=self.settings)) as client:
+            app = create_app(settings=self.settings)
+            with TestClient(app) as client:
+                self.assertTrue(app.state.warmup_complete.wait(5))
                 response = client.get("/cache")
                 self.assertEqual(response.status_code, 503)
                 self.assertNotIn("secret-value", response.text)
@@ -231,7 +239,7 @@ class APITests(BackendFixture):
 
     def test_openapi_exposes_only_requested_operations_and_no_credentials(self):
         schema = self.client.get("/openapi.json").json()
-        self.assertEqual(set(schema["paths"]), {"/health", "/capabilities", "/query", "/cache", "/evaluation"})
+        self.assertEqual(set(schema["paths"]), {"/health", "/ready", "/capabilities", "/query", "/cache", "/evaluation"})
         properties = schema["components"]["schemas"]["QueryBody"]["properties"]
         self.assertNotIn("api_key", properties)
         self.assertFalse(schema["components"]["schemas"]["QueryBody"]["additionalProperties"])
