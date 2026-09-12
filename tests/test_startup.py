@@ -78,6 +78,7 @@ class StartupTests(unittest.TestCase):
                     release.set()
                     self.assertTrue(app.state.warmup_complete.wait(5))
                 self.assertEqual(client.get('/ready').json(), {'status': 'ready'})
+                model.encode.assert_called_once_with("Semantic cache warm-up.", normalize_embeddings=True, show_progress_bar=False)
                 with patch('src.llm_providers.time.sleep'):
                     result = client.post('/query', json={'question': 'What is semantic caching?'})
                 self.assertEqual(result.status_code, 200)
@@ -116,3 +117,67 @@ class StartupTests(unittest.TestCase):
                         self.assertEqual(response.json()['error']['code'], 'model_initialization_failed')
                         self.assertNotIn('secret-detail', response.text)
                 constructor.assert_called_once()
+
+    def test_timeout_during_loading_or_first_encode_is_terminal_without_polling(self):
+        for stall in ("construction", "encode"):
+            with self.subTest(stall=stall):
+                EmbeddingService._load_model.cache_clear()
+                entered, release = Event(), Event()
+                model = Mock()
+
+                def block():
+                    entered.set()
+                    if not release.wait(5):
+                        raise RuntimeError("test release timed out")
+
+                def construct(_):
+                    if stall == "construction":
+                        block()
+                    return model
+
+                def encode(*args, **kwargs):
+                    if stall == "encode":
+                        block()
+                    return [1.0, 0.0]
+
+                model.encode.side_effect = encode
+                with patch("src.embeddings.SentenceTransformer", side_effect=construct) as constructor:
+                    app = create_app(settings=self.config, warmup_timeout_seconds=0.5)
+                    with TestClient(app) as client:
+                        try:
+                            self.assertTrue(entered.wait(5))
+                            self.assertEqual(client.get("/health").status_code, 200)
+                            self.assertTrue(app.state.warmup_complete.wait(5))
+                            ready = client.get("/ready").json()
+                            self.assertEqual(ready["status"], "error")
+                            self.assertIn("timed out", ready["message"])
+                            for path, body in (("/query", {"question": "q"}), ("/evaluation", {})):
+                                result = client.post(path, json=body)
+                                self.assertEqual(result.status_code, 503)
+                                self.assertEqual(result.json()["error"]["code"], "model_initialization_failed")
+                        finally:
+                            release.set()
+                            app.state.warmup_thread.join(5)
+                        self.assertFalse(app.state.warmup_thread.is_alive())
+                        self.assertEqual(client.get("/ready").json(), ready)
+                        constructor.assert_called_once()
+                    with TestClient(app) as client:
+                        self.assertEqual(client.get("/ready").json(), ready)
+                    constructor.assert_called_once()
+
+    def test_first_encode_failure_is_sanitized_in_logs_and_readiness(self):
+        model = Mock()
+        model.encode.side_effect = RuntimeError("secret-detail")
+        with patch("src.embeddings.SentenceTransformer", return_value=model), self.assertLogs("uvicorn.error", level="INFO") as logs:
+            app = create_app(settings=self.config)
+            with TestClient(app) as client:
+                self.assertTrue(app.state.warmup_complete.wait(5))
+                self.assertEqual(client.get("/ready").json()["status"], "error")
+                self.assertNotIn("secret-detail", client.get("/ready").text)
+        output = "\n".join(logs.output)
+        for stage in ("thread_started", "application_created", "first_test_encode", "initialization_failure"):
+            self.assertIn("stage=" + stage, output)
+        self.assertIn("elapsed_seconds=", output)
+        self.assertIn("rss_mib=", output)
+        self.assertNotIn("secret-detail", output)
+        self.assertNotIn("stage=model_ready", output)
