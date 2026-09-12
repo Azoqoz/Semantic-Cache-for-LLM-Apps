@@ -147,6 +147,6 @@ class CacheApplication:
 
 
 def create_application(settings: Settings) -> CacheApplication:
-    embeddings = EmbeddingService(settings.embedding_model)
+    embeddings = EmbeddingService(settings.embedding_model, lazy=True)
     cache = SQLiteSemanticCache(settings.database_path, embeddings)
     return CacheApplication(settings, cache, embeddings)
