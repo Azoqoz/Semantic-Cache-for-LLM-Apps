@@ -59,7 +59,7 @@ class StartupTests(unittest.TestCase):
                 raise RuntimeError("test release timed out")
             return model
 
-        with patch("src.embeddings.SentenceTransformer", side_effect=load) as constructor:
+        with patch("src.embeddings.OnnxSentenceEncoder", side_effect=load) as constructor:
             app = create_app(settings=self.config)
             constructor.assert_not_called()
             with TestClient(app) as client:
@@ -93,7 +93,7 @@ class StartupTests(unittest.TestCase):
             constructor.assert_called_once()
 
     def test_requests_cannot_start_initialization_without_startup(self):
-        with patch('src.embeddings.SentenceTransformer') as constructor:
+        with patch('src.embeddings.OnnxSentenceEncoder') as constructor:
             client = TestClient(create_app(settings=self.config))
             self.addCleanup(client.close)
             for _ in range(3):
@@ -102,7 +102,7 @@ class StartupTests(unittest.TestCase):
             constructor.assert_not_called()
 
     def test_failed_warmup_is_safe_and_never_automatically_retried(self):
-        with patch('src.embeddings.SentenceTransformer', side_effect=RuntimeError('secret-detail')) as constructor:
+        with patch('src.embeddings.OnnxSentenceEncoder', side_effect=RuntimeError('secret-detail')) as constructor:
             app = create_app(settings=self.config)
             with TestClient(app) as client:
                 self.assertTrue(app.state.warmup_complete.wait(5))
@@ -141,7 +141,7 @@ class StartupTests(unittest.TestCase):
                     return [1.0, 0.0]
 
                 model.encode.side_effect = encode
-                with patch("src.embeddings.SentenceTransformer", side_effect=construct) as constructor:
+                with patch("src.embeddings.OnnxSentenceEncoder", side_effect=construct) as constructor:
                     app = create_app(settings=self.config, warmup_timeout_seconds=0.5)
                     with TestClient(app) as client:
                         try:
@@ -168,7 +168,7 @@ class StartupTests(unittest.TestCase):
     def test_first_encode_failure_is_sanitized_in_logs_and_readiness(self):
         model = Mock()
         model.encode.side_effect = RuntimeError("secret-detail")
-        with patch("src.embeddings.SentenceTransformer", return_value=model), self.assertLogs("uvicorn.error", level="INFO") as logs:
+        with patch("src.embeddings.OnnxSentenceEncoder", return_value=model), self.assertLogs("uvicorn.error", level="INFO") as logs:
             app = create_app(settings=self.config)
             with TestClient(app) as client:
                 self.assertTrue(app.state.warmup_complete.wait(5))

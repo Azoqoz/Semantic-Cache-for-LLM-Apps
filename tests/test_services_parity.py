@@ -14,7 +14,7 @@ from src import llm_providers as providers
 
 class EmbeddingParity(unittest.TestCase):
     def test_encoding_trims_requests_normalization_and_returns_float32_list(self):
-        with patch("src.embeddings.SentenceTransformer") as constructor:
+        with patch("src.embeddings.OnnxSentenceEncoder") as constructor:
             EmbeddingService._load_model.cache_clear()
             self.addCleanup(EmbeddingService._load_model.cache_clear)
             constructor.return_value.encode.return_value = np.array([0.123456789, 1], dtype=np.float64)
@@ -29,7 +29,7 @@ class EmbeddingParity(unittest.TestCase):
             self.assertEqual(constructor.return_value.encode.call_count, 1)
 
     def test_model_loading_reuses_names_and_evicts_after_two_models(self):
-        with patch("src.embeddings.SentenceTransformer") as constructor:
+        with patch("src.embeddings.OnnxSentenceEncoder") as constructor:
             EmbeddingService._load_model.cache_clear()
             self.addCleanup(EmbeddingService._load_model.cache_clear)
             first = EmbeddingService("a")

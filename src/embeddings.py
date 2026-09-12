@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import os
 import logging
 from pathlib import Path
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING
 
 import numpy as np
 
 from src.config import PROJECT_ROOT
+from src.onnx_embeddings import MODEL_REVISION, OnnxSentenceEncoder
 
 
 def log_warmup(stage: str, started_at: float, **details) -> None:
@@ -33,31 +32,7 @@ def log_warmup(stage: str, started_at: float, **details) -> None:
 
 def model_cache_path(model_name: str) -> Path:
     """Build artifact location shared by prefetch and runtime, independent of cwd."""
-    return PROJECT_ROOT / ".model-cache" / model_name.replace("/", "--")
-
-if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer as SentenceTransformerModel
-
-
-def SentenceTransformer(model_name: str) -> SentenceTransformerModel:
-    """Import the heavy inference runtime only when a model is requested."""
-    started_at = monotonic()
-    log_warmup("importing_sentence_transformers", started_at)
-    from sentence_transformers import SentenceTransformer as Model
-    log_warmup("sentence_transformers_imported", started_at)
-
-    path = model_cache_path(model_name)
-    log_warmup("locating_cached_model", started_at, path=path)
-    if path.is_dir():
-        source, offline = str(path), True
-    else:
-        if os.getenv("RENDER") == "true":
-            raise RuntimeError("Embedding build artifact missing; run python -m src.prefetch_model during build.")
-        source, offline = model_name, False
-    log_warmup("constructing_sentence_transformer", started_at, source=source, local_files_only=offline)
-    model = Model(source, local_files_only=True) if offline else Model(source)
-    log_warmup("sentence_transformer_constructed", started_at)
-    return model
+    return PROJECT_ROOT / ".model-cache" / model_name.replace("/", "--") / ("onnx-" + MODEL_REVISION)
 
 
 class EmbeddingService:
@@ -70,8 +45,8 @@ class EmbeddingService:
 
     @staticmethod
     @lru_cache(maxsize=2)
-    def _load_model(model_name: str) -> SentenceTransformerModel:
-        return SentenceTransformer(model_name)
+    def _load_model(model_name: str) -> OnnxSentenceEncoder:
+        return OnnxSentenceEncoder(model_name)
 
     def warm_up(self) -> None:
         """Initialize once without making a query or recording cache activity."""

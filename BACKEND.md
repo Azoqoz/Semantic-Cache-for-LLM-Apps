@@ -76,32 +76,72 @@ pip install -r requirements.txt && python -m src.prefetch_model
 Keep the Start Command:
 
 ```sh
-python -m uvicorn src.api:app --host 0.0.0.0 --port $PORT
+python -m uvicorn src.api:app --host 0.0.0.0 --port $PORT --workers 1
 ```
 
-The prefetch module reads `settings.embedding_model` (currently
-`sentence-transformers/all-MiniLM-L6-v2`), downloads the existing model using
-SentenceTransformer, and saves all its modules, tokenizer, configuration, and
-weights under `.model-cache/sentence-transformers--all-MiniLM-L6-v2` in the build
-artifact. It verifies that artifact with the same offline loader used at runtime.
-Build errors propagate and prevent deployment. An existing artifact is validated
-and reused; an invalid artifact fails rather than silently downloading again.
-Remove the invalid `.model-cache` artifact before rebuilding if needed.
+The prefetch module reads `settings.embedding_model` (still
+`sentence-transformers/all-MiniLM-L6-v2`) and fetches the official full-precision
+`onnx/model.onnx`, tokenizer and configuration files at revision
+`1110a243fdf4706b3f48f1d95db1a4f5529b4d41`. Artifacts are stored under
+`.model-cache/sentence-transformers--all-MiniLM-L6-v2/onnx-1110a243fdf4706b3f48f1d95db1a4f5529b4d41`.
+The build validates a real encode using the same offline runtime loader.
+Download, artifact, or inference errors fail the build. Only the build module
+imports Hugging Face Hub; API execution never does.
 
 The path is relative to the project root, not the shell working directory or a
 build-only home cache. Do not mount a runtime disk over `.model-cache` or exclude
 it from a custom deployment artifact. The directory is Git-ignored.
 
-On [Render](https://render.com/docs/environment-variables), `RENDER=true` makes a
-missing artifact an initialization error instead of allowing a runtime download.
-A present artifact always loads with `local_files_only=True`, using the existing
-[SentenceTransformer save/load contract](https://www.sbert.net/docs/package_reference/sentence_transformer/index.html).
-Local development without an artifact retains its original model loading behavior.
+Runtime uses `onnxruntime` with `CPUExecutionProvider`, `tokenizers` and NumPy.
+It opens explicit local filenames and contains no remote-loading fallback, even
+in local development. Run prefetch once before local use as well. PyTorch and
+SentenceTransformer are development-only reference dependencies. The tokenizer
+retains the model's special tokens, uncased normalization and 256-token limit.
+Attention-mask mean pooling and L2 normalization produce 384 float32 components.
+No quantization is used. The official export requires pooling and normalization
+outside ONNX, as described in the
+[Sentence Transformers documentation](https://github.com/huggingface/sentence-transformers/blob/main/docs/sentence_transformer/usage/efficiency.rst).
+Inference uses one CPU thread and serializes encode calls to bound activation
+memory. Existing SQLite vectors remain compatible; no database reset or schema
+change is required. Near an exact threshold, tiny floating-point differences can
+still affect a decision; thresholds and inclusive comparisons are unchanged.
 
 FastAPI still binds without waiting; background startup loads the cached weights
 into memory once, then `/ready` becomes `ready`. Prefetch removes download time,
-not Python/PyTorch import time or memory requirements. `/health` remains liveness;
+not all process startup or model memory requirements. `/health` remains liveness;
 `/ready` retains its JSON contract (including HTTP 200 while warming), so a Render
 HTTP health check alone does not gate traffic on model readiness. Existing frontend
 readiness polling continues to protect query/evaluation actions during that short
 initialization period. No model or cache semantics are changed.
+
+Warm-up still runs once in the background, tests one small encode, and has a
+180-second terminal timeout. Logs now show `importing_onnx_runtime`,
+`onnx_runtime_imported`, `constructing_onnx_session`, `onnx_session_constructed`,
+`first_test_encode` and `model_ready`, with elapsed time and Linux RSS. No request
+can start initialization. Missing artifacts and timeout require an explicit
+rebuild/restart rather than automatic download retries.
+
+## Real embedding parity tests
+
+Install `requirements-dev.txt` and run production prefetch first. Download the
+pinned PyTorch reference separately (development only):
+
+```sh
+python -c "from huggingface_hub import snapshot_download; from src.onnx_embeddings import MODEL_NAME, MODEL_REVISION, MODEL_FILES; snapshot_download(MODEL_NAME, revision=MODEL_REVISION, local_dir='.model-cache/parity-reference', allow_patterns=[f for f in MODEL_FILES if not f.endswith('.onnx')] + ['model.safetensors'])"
+```
+
+Set `SENTENCE_TRANSFORMER_REFERENCE` to the absolute path of
+`.model-cache/parity-reference`, then run:
+
+```sh
+python -B -m unittest tests.test_embedding_onnx_parity tests.test_startup -v
+python -B -m unittest discover -v
+```
+
+Parity tests use real offline inference on the 36 evaluation pairs plus Unicode,
+whitespace, and truncation cases. They check dimensions, normalization, numerical
+tolerance, ranking, all evaluation thresholds, evaluation metrics, and reuse of
+persisted PyTorch embeddings. A fresh-process API test blocks PyTorch,
+Transformers, SentenceTransformer, Hugging Face Hub and external network access.
+Without local artifacts/reference configuration these integration tests explicitly
+skip; ordinary parity/unit tests require no downloads.
