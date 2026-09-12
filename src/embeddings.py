@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
+from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from src.config import PROJECT_ROOT
+
+
+def model_cache_path(model_name: str) -> Path:
+    """Build artifact location shared by prefetch and runtime, independent of cwd."""
+    return PROJECT_ROOT / ".model-cache" / model_name.replace("/", "--")
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer as SentenceTransformerModel
@@ -14,6 +23,11 @@ def SentenceTransformer(model_name: str) -> SentenceTransformerModel:
     """Import the heavy inference runtime only when a model is requested."""
     from sentence_transformers import SentenceTransformer as Model
 
+    path = model_cache_path(model_name)
+    if path.is_dir():
+        return Model(str(path), local_files_only=True)
+    if os.getenv("RENDER") == "true":
+        raise RuntimeError("Embedding build artifact missing; run python -m src.prefetch_model during build.")
     return Model(model_name)
 
 

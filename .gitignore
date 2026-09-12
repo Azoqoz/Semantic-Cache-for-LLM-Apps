@@ -1,4 +1,5 @@
 __pycache__/
+.model-cache/
 *.py[cod]
 *.sqlite3
 .env

@@ -61,6 +61,47 @@ The handlers follow FastAPI's [exception handler mechanism](https://fastapi.tian
 This is a local backend, without authentication, tenant isolation, rate limiting,
 or CORS configuration. It retains SQLite's linear scan, non-atomic concurrent
 miss behavior and separate entry/event writes. Resource initialization starts automatically in a background thread
-once per application process; startup warm-up may download the embedding model. Liveness is available without waiting. Query, evaluation, and cache operations return structured HTTP 503 errors until ready. A failed warm-up stays failed until an operator restarts the service; requests never trigger loading or retry downloads. Evaluation
+once per application process; Render startup loads the build-prepared model locally without downloading it. Liveness is available without waiting. Query, evaluation, and cache operations return structured HTTP 503 errors until ready. A failed warm-up stays failed until an operator restarts the service; requests never trigger loading or retry downloads. Evaluation
 is synchronous and recomputes embeddings. Tests use real SQLite and cosine math,
 with model inference and providers mocked; they do not verify live provider uptime.
+
+## Render model preparation
+
+Use the repository root as the Render service root directory and this Build Command:
+
+```sh
+pip install -r requirements.txt && python -m src.prefetch_model
+```
+
+Keep the Start Command:
+
+```sh
+python -m uvicorn src.api:app --host 0.0.0.0 --port $PORT
+```
+
+The prefetch module reads `settings.embedding_model` (currently
+`sentence-transformers/all-MiniLM-L6-v2`), downloads the existing model using
+SentenceTransformer, and saves all its modules, tokenizer, configuration, and
+weights under `.model-cache/sentence-transformers--all-MiniLM-L6-v2` in the build
+artifact. It verifies that artifact with the same offline loader used at runtime.
+Build errors propagate and prevent deployment. An existing artifact is validated
+and reused; an invalid artifact fails rather than silently downloading again.
+Remove the invalid `.model-cache` artifact before rebuilding if needed.
+
+The path is relative to the project root, not the shell working directory or a
+build-only home cache. Do not mount a runtime disk over `.model-cache` or exclude
+it from a custom deployment artifact. The directory is Git-ignored.
+
+On [Render](https://render.com/docs/environment-variables), `RENDER=true` makes a
+missing artifact an initialization error instead of allowing a runtime download.
+A present artifact always loads with `local_files_only=True`, using the existing
+[SentenceTransformer save/load contract](https://www.sbert.net/docs/package_reference/sentence_transformer/index.html).
+Local development without an artifact retains its original model loading behavior.
+
+FastAPI still binds without waiting; background startup loads the cached weights
+into memory once, then `/ready` becomes `ready`. Prefetch removes download time,
+not Python/PyTorch import time or memory requirements. `/health` remains liveness;
+`/ready` retains its JSON contract (including HTTP 200 while warming), so a Render
+HTTP health check alone does not gate traffic on model readiness. Existing frontend
+readiness polling continues to protect query/evaluation actions during that short
+initialization period. No model or cache semantics are changed.
