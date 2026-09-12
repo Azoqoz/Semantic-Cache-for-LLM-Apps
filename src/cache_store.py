@@ -197,6 +197,7 @@ class SQLiteSemanticCache:
                     matched_question=entry.question,
                     similarity=1.0,
                     entry_id=entry.id,
+                    hit_type="exact",
                 )
 
             rows = connection.execute(
@@ -206,6 +207,7 @@ class SQLiteSemanticCache:
 
         best_entry: Optional[CacheEntry] = None
         best_similarity = -1.0
+        observed_similarity: Optional[float] = None
 
         for row in rows:
             entry = self._row_to_entry(row)
@@ -213,6 +215,8 @@ class SQLiteSemanticCache:
                 query_embedding,
                 entry.embedding,
             )
+            if observed_similarity is None or similarity > observed_similarity:
+                observed_similarity = similarity
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_entry = entry
@@ -225,12 +229,15 @@ class SQLiteSemanticCache:
                 matched_question=best_entry.question,
                 similarity=best_similarity,
                 entry_id=best_entry.id,
+                hit_type="semantic",
+                cosine_similarity=best_similarity,
             )
 
         return CacheLookupResult(
             hit=False,
             similarity=max(best_similarity, 0.0),
             matched_question=best_entry.question if best_entry else None,
+            cosine_similarity=observed_similarity,
         )
 
     def _record_access(self, entry_id: int) -> None:

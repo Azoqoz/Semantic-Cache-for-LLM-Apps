@@ -68,6 +68,9 @@ class SemanticCacheService:
                 provider=provider.name,
                 model=provider.model,
                 estimated_cost_usd=avoided_cost,
+                hit_type=lookup.hit_type,
+                cosine_similarity=lookup.cosine_similarity,
+                cost_basis=self._default_cost_basis(provider.name),
             )
 
         llm_response = provider.generate(cleaned_question)
@@ -108,7 +111,19 @@ class SemanticCacheService:
             provider=llm_response.provider,
             model=llm_response.model,
             estimated_cost_usd=actual_or_estimated_cost,
+            hit_type="miss",
+            cosine_similarity=lookup.cosine_similarity,
+            cost_basis=("provider_estimate" if llm_response.estimated_cost_usd is not None
+                        else self._default_cost_basis(provider.name)),
         )
+
+    @staticmethod
+    def _default_cost_basis(provider_name: str) -> str | None:
+        if provider_name in {"OpenAI", "Demo"}:
+            return "default_estimate"
+        if provider_name == "Ollama":
+            return "local_zero"
+        return None
 
     @staticmethod
     def _default_avoided_cost(provider_name: str) -> float:

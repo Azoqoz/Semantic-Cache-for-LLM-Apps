@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
@@ -25,6 +25,8 @@ class CacheLookupResult:
     matched_question: Optional[str] = None
     similarity: float = 0.0
     entry_id: Optional[int] = None
+    hit_type: Literal["exact", "semantic", "miss"] = "miss"
+    cosine_similarity: Optional[float] = None
 
 
 @dataclass
@@ -48,3 +50,6 @@ class QueryResult:
     provider: str
     model: str
     estimated_cost_usd: Optional[float]
+    hit_type: Literal["exact", "semantic", "miss"] = "miss"
+    cosine_similarity: Optional[float] = None
+    cost_basis: Optional[str] = None
