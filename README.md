@@ -1,61 +1,142 @@
 # Semantic Cache for LLM Apps
 
-A Streamlit application that reuses answers for semantically equivalent questions to reduce LLM latency, provider calls, and estimated cost.
+A production-oriented semantic caching layer for LLM applications that reuses answers for semantically equivalent questions using local embeddings, cosine similarity, persistent SQLite storage, TTL expiration, provider/model isolation, and measurable cache-performance evaluation.
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.46%2B-FF4B4B?logo=streamlit&logoColor=white)
-![Sentence Transformers](https://img.shields.io/badge/Sentence%20Transformers-5.x-FFD21E)
-![SQLite](https://img.shields.io/badge/SQLite-Persistent%20Cache-003B57?logo=sqlite&logoColor=white)
+![Python](https://img.shields.io/badge/Backend-Python-3776AB?logo=python&logoColor=white)
+![TypeScript](https://img.shields.io/badge/Frontend-TypeScript-3178C6?logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Frontend-Next.js-black?logo=next.js)
+![ONNX](https://img.shields.io/badge/Production%20Embeddings-ONNX-005CED)
+![Sentence Transformers](https://img.shields.io/badge/Embeddings-Sentence%20Transformers-FFD21E)
+![SQLite](https://img.shields.io/badge/Cache-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Multi-Provider](https://img.shields.io/badge/LLM-Multi--Provider-6F42C1)
-![Status](https://img.shields.io/badge/Status-Completed-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+
+---
+
+## Live Application
+
+**Web Application:**  
+https://semantic-cache-for-llm-apps-wq2w.vercel.app
+
+The hosted application runs in a restricted public-demo configuration and does not require visitors to provide external LLM API keys.
 
 ---
 
 ## Overview
 
-LLM applications often receive repeated questions that use different wording but express the same intent. Sending every equivalent request to a model adds avoidable latency and cost.
+LLM applications often receive repeated questions that differ in wording while expressing the same underlying intent.
 
-This project generates a normalized local embedding for each question and compares it with valid cached embeddings using cosine similarity. When an exact match or a semantic match reaches the configured threshold, the application returns the stored answer without another provider call. When no cached entry qualifies, the selected provider generates an answer, and the question, embedding, response, provider, model, and expiration data are persisted in SQLite for future reuse.
+Sending every equivalent request to an LLM creates unnecessary:
+
+- Latency
+- Provider traffic
+- Inference cost
+- Repeated computation
+
+Semantic Cache for LLM Apps introduces a reusable caching layer between the application and the selected model provider.
+
+For each incoming question, the system:
+
+1. Normalizes the input
+2. Generates a local semantic embedding
+3. Checks for an exact cached match
+4. Filters expired cache entries using TTL
+5. Compares valid cached embeddings using cosine similarity
+6. Optionally isolates matches by provider and model
+7. Reuses a cached answer when the configured similarity threshold is reached
+8. Calls the selected provider only on a cache miss
+9. Persists the new response for future reuse
+10. Records cache and performance metrics
+
+This allows semantically equivalent prompts to reuse previous answers without requiring another provider request.
 
 ---
 
 ## Key Features
 
-- Local Sentence Transformer embeddings with normalized vectors
-- Exact-match and semantic cache lookup with configurable similarity threshold and TTL
-- Persistent SQLite storage with safe schema migration
-- Optional cache isolation by provider and model
-- Offline rule-based Demo provider with simulated LLM latency and illustrative cost
-- OpenAI, Claude, Gemini, and Ollama integrations for local full mode
-- Dashboard metrics for usage, latency, cache activity, and estimated savings
-- Cache Explorer with selective entry deletion
-- Evaluation dataset with 36 labeled positive and negative question pairs
-- Easy, Medium, and Hard evaluation categories with pair-level results
-- Multi-threshold comparison and automatic threshold recommendation
+- Exact-match cache lookup
+- Semantic cache lookup
+- Local embedding generation
+- Normalized embedding vectors
+- Cosine-similarity matching
+- Configurable semantic threshold
+- Configurable TTL expiration
+- Persistent SQLite cache storage
+- Safe SQLite schema migration
+- Optional provider isolation
+- Optional model isolation
+- OpenAI integration
+- Anthropic Claude integration
+- Google Gemini integration
+- Local Ollama integration
+- Offline Demo provider
+- Public Demo Mode
+- Full Local Mode
+- Cache-hit and cache-miss tracking
+- Latency measurement
+- Estimated cost tracking
+- Estimated avoided-cost tracking
+- Hit-rate calculation
+- Cache Explorer
+- Selective cache-entry deletion
+- Labeled semantic-similarity evaluation dataset
+- Easy, Medium, and Hard evaluation categories
+- Accuracy, precision, recall, and F1 measurement
+- Multi-threshold evaluation
+- Automatic threshold recommendation
+- Production ONNX embedding runtime
+- Modern Next.js production frontend
+- Legacy Streamlit interface retained for project history
 
 ---
 
-## Live Demo
+## Cache Workflow
 
-The hosted Streamlit demo link will be added after deployment.
-
-The hosted version runs in **Demo** mode without external API calls or visitor-supplied API keys.
-
----
-
-## Demo Workflow
-
-1. Select **Demo**. It works fully offline after the embedding model is available.
-2. Clear the cache if you want a clean comparison.
-3. Ask `What is semantic caching?` to create a cache miss. The provider waits about 1.2 seconds to simulate an LLM call and assigns an illustrative cost of $0.002.
-4. Ask `Can you explain semantic cache?` to test a semantic cache hit.
-5. Compare the status, similarity, threshold, latency, provider, model, cost, and matched cached question.
-6. Open **Dashboard** to compare hit and miss latency and estimated savings.
-7. Open **Evaluation**, adjust its independent threshold slider, and inspect pair-level predictions, accuracy by difficulty, and the multi-threshold comparison.
-8. Compare the manually selected threshold with the automatic recommendation based on F1, precision, and threshold tie-breakers.
-9. Open **Technical** to review the request flow, engineering decisions, and Cache Explorer.
-
-The Demo provider also recognizes questions about semantic caching, cost reduction, embeddings, cosine similarity, cache hits, cache misses, and threshold tuning. Unknown topics receive a useful offline fallback.
+```text
+User Question
+      |
+      v
+Question Normalization
+      |
+      v
+Local Embedding Generation
+      |
+      v
+Exact-Match Lookup
+      |
+      +-------- Match --------+
+      |                       |
+      |                       v
+      |                  Cache Hit
+      |
+      v
+TTL Filtering
+      |
+      v
+Candidate Embedding Comparison
+      |
+      v
+Cosine Similarity
+      |
+      v
+Similarity >= Threshold?
+     / \
+   Yes  No
+    |    |
+    |    v
+    |  LLM Provider Call
+    |    |
+    |    v
+    |  Cache Persistence
+    |    |
+    +----+
+      |
+      v
+Metrics Recording
+      |
+      v
+Application Response
+```
 
 ---
 
@@ -63,36 +144,201 @@ The Demo provider also recognizes questions about semantic caching, cost reducti
 
 ```mermaid
 flowchart TD
-    A[Streamlit interface] --> B[User question]
-    B --> C[Local embedding model]
-    C --> D[SQLite semantic cache]
-    D --> E{Exact match?}
-    E -- Yes --> H[Cache hit]
-    E -- No --> F[Cosine similarity]
-    F --> G{Similarity meets threshold?}
-    G -- Yes --> H
-    G -- No --> I[Provider call]
-    I --> J[Cache persistence]
-    J --> D
-    H --> K[Metrics recording]
-    J --> K
-    K --> A
+    A["User"] --> B["Next.js Frontend"]
+
+    B --> C["Semantic Cache Service"]
+
+    C --> D["Question Normalization"]
+    D --> E["Local Embedding Runtime"]
+
+    E --> E1["ONNX — Production"]
+    E --> E2["Sentence Transformers — Local"]
+
+    E1 --> F["SQLite Semantic Cache"]
+    E2 --> F
+
+    F --> G{"Exact Match?"}
+
+    G -->|Yes| H["Cache Hit"]
+    G -->|No| I["TTL-Valid Candidates"]
+
+    I --> J["Cosine Similarity"]
+    J --> K{"Similarity ≥ Threshold?"}
+
+    K -->|Yes| H
+    K -->|No| L["Selected Provider"]
+
+    L --> L1["Demo"]
+    L --> L2["OpenAI"]
+    L --> L3["Claude"]
+    L --> L4["Gemini"]
+    L --> L5["Ollama"]
+
+    L1 --> M["New Response"]
+    L2 --> M
+    L3 --> M
+    L4 --> M
+    L5 --> M
+
+    M --> N["Cache Persistence"]
+
+    H --> O["Metrics"]
+    N --> O
+
+    O --> P["Response"]
+    P --> B
 ```
 
 ---
 
 ## Semantic Cache Workflow
 
-1. **Question normalization:** Trim the incoming question, convert it to lowercase for lookup, and normalize repeated whitespace.
-2. **Embedding generation:** Encode the cleaned question with the local `sentence-transformers/all-MiniLM-L6-v2` model and normalize the resulting vector.
-3. **Exact-match lookup:** Search for the most recent valid entry with the same normalized question.
-4. **TTL filtering:** Exclude entries whose configured expiration time has passed.
-5. **Cosine-similarity comparison:** Compare the query vector with candidate cached vectors when no exact match exists.
-6. **Provider/model isolation:** When enabled, restrict candidates to the selected provider and model.
-7. **Threshold decision:** Treat the best candidate as a semantic cache hit only when its similarity reaches the selected threshold.
-8. **Reuse or invocation:** Return the stored answer on a hit; otherwise call the selected provider.
-9. **Cache persistence:** Store the new question, embedding, answer, provider, model, cost estimate, and TTL after a miss.
-10. **Event and metric recording:** Record hit or miss status, similarity, latency, provider, model, and estimated cost for dashboard reporting.
+### 1. Question Normalization
+
+Incoming questions are cleaned before lookup.
+
+The system:
+
+- Trims surrounding whitespace
+- Converts text to lowercase for normalized lookup
+- Collapses repeated whitespace
+
+This improves exact-match consistency.
+
+---
+
+### 2. Embedding Generation
+
+The semantic representation is based on:
+
+```text
+sentence-transformers/all-MiniLM-L6-v2
+```
+
+The question is encoded into a normalized vector.
+
+Normalized embeddings make cosine-similarity comparison straightforward and reproducible.
+
+---
+
+### 3. Exact-Match Lookup
+
+Before performing semantic comparison, the cache searches for a valid entry with the same normalized question.
+
+Exact hits avoid unnecessary vector comparison.
+
+---
+
+### 4. TTL Filtering
+
+Cached responses can expire.
+
+Each entry stores expiration information so outdated cache records are excluded automatically.
+
+```text
+Valid Entry
+    ↓
+Current Time < Expiration Time
+```
+
+Expired entries are not considered valid semantic matches.
+
+---
+
+### 5. Semantic Similarity
+
+When an exact match is not found, the incoming embedding is compared with valid cached embeddings.
+
+Similarity is measured using:
+
+```text
+Cosine Similarity
+```
+
+The cache selects the strongest candidate.
+
+---
+
+### 6. Provider and Model Isolation
+
+Cache candidates can optionally be restricted to the active:
+
+```text
+Provider
+Model
+```
+
+This prevents a response generated by one provider or model from being unintentionally reused for another configuration.
+
+Example:
+
+```text
+OpenAI / Model A
+```
+
+can remain isolated from:
+
+```text
+Gemini / Model B
+```
+
+even when the prompts are semantically similar.
+
+---
+
+### 7. Threshold Decision
+
+The highest-similarity candidate becomes a cache hit only when:
+
+```text
+similarity >= configured threshold
+```
+
+Otherwise the request is treated as a cache miss.
+
+---
+
+### 8. Provider Invocation
+
+On a cache miss, the selected provider generates a new answer.
+
+That answer can then be stored for future reuse.
+
+---
+
+### 9. Cache Persistence
+
+A cache entry can contain information such as:
+
+```text
+Normalized question
+Embedding
+Response
+Provider
+Model
+Estimated cost
+Creation time
+Expiration time
+```
+
+The persistent SQLite store allows cache data to survive application restarts.
+
+---
+
+### 10. Metrics Recording
+
+Each request records operational information such as:
+
+- Cache hit or miss
+- Similarity
+- Threshold
+- Latency
+- Provider
+- Model
+- Estimated cost
+- Matched cached question
+
+This turns semantic caching into a measurable system rather than an invisible optimization.
 
 ---
 
@@ -100,91 +346,361 @@ flowchart TD
 
 | Provider | Configuration | Behavior |
 |---|---|---|
-| Demo | No API key required | Offline rule-based responses for safe demonstration |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | Uses the official OpenAI SDK |
-| Claude | `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` | Uses the official Anthropic SDK |
-| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | Uses the official Google Gen AI SDK |
-| Ollama | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | Calls a locally running Ollama server |
+| Demo | No API key | Offline deterministic responses |
+| OpenAI | `OPENAI_API_KEY`, `OPENAI_MODEL` | Official OpenAI SDK |
+| Claude | `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` | Official Anthropic SDK |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_MODEL` | Official Google Gen AI SDK |
+| Ollama | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | Local Ollama server |
 
-Cache isolation by provider and model prevents responses generated by different backends from being mixed.
+Cache isolation by provider and model prevents answers generated by different backends from being mixed when isolation is enabled.
 
 ---
 
-## Hosted Demo vs Local Full Mode
+## Application Modes
 
-### Hosted Demo
+The application separates its hosted demonstration environment from full local-provider access.
 
-- Runs with the Demo provider only and requires no API key.
-- Demonstrates cache hits, cache misses, latency reduction, evaluation, and cost-saving metrics.
-- OpenAI, Claude, Gemini, and Ollama are intentionally disabled.
-- No visitor API keys are collected, displayed, stored, logged, or transmitted.
-- External provider API keys must not be added to the public deployment.
+| Mode | External API Keys | Providers | Intended Use |
+|---|---|---|---|
+| Public Demo | Not required | Demo provider | Safe hosted demonstration |
+| Full Local | Optional | Demo, OpenAI, Claude, Gemini, Ollama | Local experimentation |
 
-The public deployment must use:
+---
 
-```toml
-APP_MODE="demo"
+## Public Demo Mode
+
+The hosted version runs without requiring external LLM credentials.
+
+In Public Demo Mode:
+
+- No visitor API keys are requested
+- No visitor API keys are stored
+- No visitor API keys are logged
+- OpenAI is disabled
+- Claude is disabled
+- Gemini is disabled
+- Ollama is disabled
+- The local Demo provider is used
+- Semantic embeddings remain active
+- Exact matching remains active
+- Semantic matching remains active
+- TTL remains active
+- SQLite cache behavior remains active
+- Latency metrics remain active
+- Estimated cost metrics remain active
+- Evaluation remains available
+
+The Demo provider simulates the behavior of an LLM request so cache-hit and cache-miss behavior can be demonstrated safely.
+
+---
+
+## Full Local Mode
+
+Full Local Mode enables all supported providers.
+
+Available providers:
+
+```text
+Demo
+OpenAI
+Claude
+Gemini
+Ollama
 ```
 
-### Local Full Mode
+Users supply only the credentials required for the providers they intend to use.
 
-Local mode supports Demo, OpenAI, Claude, Gemini, and Ollama. Users create a local `.env` file and add only the credentials for providers they intend to use. API keys remain in the local environment and must never be committed to GitHub. The application does not request API keys through the browser interface.
+Credentials remain in the local environment.
+
+The application does not require API keys to be entered through the browser interface.
+
+---
+
+## Demo Workflow
+
+A simple semantic-cache demonstration:
+
+### First Request
+
+Ask:
+
+```text
+What is semantic caching?
+```
+
+This should produce a cache miss if no matching entry exists.
+
+The Demo provider simulates an LLM request and the resulting response is stored.
+
+---
+
+### Semantic Rephrasing
+
+Then ask:
+
+```text
+Can you explain semantic cache?
+```
+
+The system generates a new embedding and compares it with the cached question.
+
+If similarity reaches the configured threshold:
+
+```text
+Semantic Cache Hit
+```
+
+The stored answer is reused without another provider call.
+
+---
+
+### Inspect the Result
+
+The application can expose:
+
+- Hit / miss status
+- Similarity
+- Threshold
+- Request latency
+- Provider
+- Model
+- Estimated cost
+- Matched cached question
 
 ---
 
 ## Similarity Evaluation
 
-The **Evaluation** tab uses 36 labeled question pairs: 18 positive matches and 18 negative matches. The dataset contains Easy, Medium, and Hard examples related to semantic caching and LLM engineering.
+The project contains a labeled evaluation dataset with:
 
-For each pair, the application embeds both questions, calculates cosine similarity, applies the manually selected evaluation threshold, and compares the predicted match with the expected label. It reports pair-level results together with accuracy, precision, recall, F1 score, true positives (TP), true negatives (TN), false positives (FP), and false negatives (FN). Accuracy is also reported separately for Easy, Medium, and Hard pairs.
+```text
+36 question pairs
+```
+
+The dataset is split into:
+
+```text
+18 positive semantic matches
+18 negative semantic matches
+```
+
+Examples are categorized by difficulty:
+
+```text
+Easy
+Medium
+Hard
+```
+
+For every pair, the evaluator:
+
+1. Embeds both questions
+2. Computes cosine similarity
+3. Applies the selected threshold
+4. Predicts Match or No Match
+5. Compares the prediction with the expected label
+
+Metrics include:
+
+- Accuracy
+- Precision
+- Recall
+- F1
+- True Positives
+- True Negatives
+- False Positives
+- False Negatives
+
+Accuracy is also tracked by difficulty category.
 
 ---
 
 ## Threshold Tuning
 
-The evaluation threshold is controlled independently from the cache threshold so users can test classification behavior without changing live cache lookup behavior.
+The evaluation threshold is independent from the live cache threshold.
 
-The multi-threshold comparison evaluates `0.60`, `0.65`, `0.70`, `0.75`, `0.80`, `0.84`, and `0.90`. The recommended threshold is selected by the highest F1 score. Ties prefer higher precision, followed by the higher threshold.
+This allows threshold experiments without changing normal cache behavior.
 
-Lower thresholds generally improve recall but may introduce unsafe false positives. Higher thresholds generally improve precision but may miss valid rephrasings. A production threshold should be selected with representative domain data.
+The documented threshold comparison evaluates:
+
+```text
+0.60
+0.65
+0.70
+0.75
+0.80
+0.84
+0.90
+```
+
+The automatic recommendation selects the threshold with the highest:
+
+```text
+F1 score
+```
+
+Tie-breaking prefers:
+
+```text
+1. Higher precision
+2. Higher threshold
+```
+
+Lower thresholds generally increase recall but can introduce unsafe false-positive cache hits.
+
+Higher thresholds generally increase precision but may miss valid rephrasings.
+
+A real production threshold should therefore be selected using representative domain data.
 
 ---
 
-## Metrics and Cost Savings
+## Metrics
 
-The **Dashboard** separates usage, performance, and estimated cost metrics:
+The application tracks cache behavior, performance, and estimated cost.
+
+### Hit Rate
 
 ```text
-hit rate              = cache hits / total queries × 100
-cache-hit latency     = average latency across cache-hit events
-cache-miss latency    = average latency across cache-miss events
-latency reduction     = (cache-miss latency - cache-hit latency)
-                        / cache-miss latency × 100
-actual LLM cost       = estimated cost across cache misses
-avoided cost          = estimated cost across cache hits
-cost without caching  = actual LLM cost + avoided cost
-savings percentage    = avoided cost / cost without caching × 100
+cache hits
+---------------- × 100
+total queries
 ```
 
-Zero-query, zero-latency, and zero-cost cases safely report zero where a denominator is unavailable. Cost values are illustrative estimates unless a selected provider returns exact billing information.
+---
+
+### Cache-Hit Latency
+
+```text
+Average latency across cache-hit events
+```
+
+---
+
+### Cache-Miss Latency
+
+```text
+Average latency across cache-miss events
+```
+
+---
+
+### Latency Reduction
+
+```text
+cache-miss latency - cache-hit latency
+-------------------------------------- × 100
+          cache-miss latency
+```
+
+---
+
+### Actual LLM Cost
+
+```text
+Estimated provider cost across cache misses
+```
+
+---
+
+### Avoided Cost
+
+```text
+Estimated cost represented by cache hits
+```
+
+---
+
+### Cost Without Caching
+
+```text
+actual LLM cost + avoided cost
+```
+
+---
+
+### Estimated Savings Percentage
+
+```text
+avoided cost
+--------------------- × 100
+cost without caching
+```
+
+Zero-query, zero-latency, and zero-cost states safely return zero when a denominator is unavailable.
+
+Cost values are illustrative estimates unless a provider supplies exact billing information.
+
+---
+
+## Production Embedding Runtime
+
+The original semantic cache uses:
+
+```text
+sentence-transformers/all-MiniLM-L6-v2
+```
+
+for local embedding generation.
+
+The production deployment also includes an ONNX embedding runtime.
+
+This provides a deployment-oriented embedding path while preserving the same semantic-cache concept:
+
+```text
+Question
+   ↓
+Local Embedding
+   ↓
+Normalized Vector
+   ↓
+Cosine Similarity
+   ↓
+Cache Decision
+```
+
+External embedding APIs are not required for the core semantic-cache workflow.
+
+---
+
+## Cache Explorer
+
+The project includes cache-inspection functionality for examining stored entries.
+
+Typical operations include:
+
+- View cached questions
+- Inspect provider
+- Inspect model
+- Inspect expiration status
+- Inspect stored responses
+- Delete individual cache entries
+- Clear cache state when required
+
+This makes cache behavior inspectable during testing and experimentation.
 
 ---
 
 ## Tech Stack
 
-| Technology | Purpose |
+| Category | Technology |
 |---|---|
-| Python | Application language and cache orchestration |
-| Streamlit | Interactive web interface and dashboard |
-| Sentence Transformers | Local semantic embedding generation |
-| NumPy | Vector handling and cosine-similarity calculation |
-| Pandas | Evaluation and dashboard data presentation |
-| SQLite | Persistent cache entries, query events, and metrics |
-| OpenAI SDK | OpenAI provider integration |
-| Anthropic SDK | Claude provider integration |
-| Google Gen AI SDK | Gemini provider integration |
-| Ollama | Local LLM provider option through its HTTP API |
-| python-dotenv | Local environment-variable loading |
+| Production frontend | Next.js |
+| Frontend language | TypeScript |
+| Cache backend | Python |
+| Embedding model | `all-MiniLM-L6-v2` |
+| Local embeddings | Sentence Transformers |
+| Production embeddings | ONNX runtime |
+| Similarity | Cosine similarity |
+| Persistent storage | SQLite |
+| Data processing | Pandas |
+| Vector operations | NumPy |
+| OpenAI integration | OpenAI SDK |
+| Claude integration | Anthropic SDK |
+| Gemini integration | Google Gen AI SDK |
+| Local provider | Ollama |
+| Environment config | python-dotenv |
+| Production frontend | Vercel |
+| Legacy interface | Streamlit |
 
 ---
 
@@ -192,39 +708,69 @@ Zero-query, zero-latency, and zero-cost cases safely report zero where a denomin
 
 ```text
 Semantic-Cache-for-LLM-Apps/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   ├── scripts/
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── README.md
+│   ├── eslint.config.mjs
+│   ├── next-env.d.ts
+│   ├── next.config.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vercel.json
+│
+├── src/
+│   ├── __init__.py
+│   ├── cache_store.py
+│   ├── config.py
+│   ├── embeddings.py
+│   ├── evaluation.py
+│   ├── llm_providers.py
+│   ├── models.py
+│   └── semantic_cache.py
+│
+├── tests/
+│
+├── assets/
+│   └── screenshots/
+│
+├── data/
+│   └── .gitkeep
+│
+├── .streamlit/
+│   └── config.toml
+│
 ├── .env.example
 ├── .gitignore
-├── .streamlit/config.toml
-├── assets/screenshots/
-├── app.py
-├── data/.gitkeep
+├── BACKEND.md
 ├── README.md
-├── requirements.txt
-├── src/__init__.py
-├── src/cache_store.py
-├── src/config.py
-├── src/embeddings.py
-├── src/evaluation.py
-├── src/llm_providers.py
-├── src/models.py
-└── src/semantic_cache.py
+├── app.py
+├── requirements-dev.txt
+└── requirements.txt
 ```
 
-Runtime-generated SQLite database files are ignored by Git and are not committed project files.
+Runtime-generated SQLite database files are ignored by Git and are not committed as project source files.
 
-### Main Files
+---
 
-| File | Purpose |
+## Core Components
+
+| Component | Responsibility |
 |---|---|
-| `app.py` | Streamlit interface, navigation, and presentation logic |
-| `src/semantic_cache.py` | Cache-hit and cache-miss orchestration |
-| `src/cache_store.py` | SQLite persistence, lookup, migrations, events, and metrics |
-| `src/embeddings.py` | Local normalized embedding generation |
-| `src/llm_providers.py` | Demo, OpenAI, Claude, Gemini, and Ollama provider adapters |
-| `src/evaluation.py` | Labeled dataset, threshold comparison, and evaluation metrics |
+| `src/semantic_cache.py` | Exact and semantic cache orchestration |
+| `src/cache_store.py` | SQLite persistence, migrations, events, and metrics |
+| `src/embeddings.py` | Normalized local embedding generation |
+| `src/llm_providers.py` | Demo, OpenAI, Claude, Gemini, and Ollama adapters |
+| `src/evaluation.py` | Labeled evaluation dataset and threshold analysis |
 | `src/config.py` | Environment-backed application configuration |
-| `.env.example` | Safe local configuration template |
-| `requirements.txt` | Python dependency declarations |
+| `frontend/` | Modern production frontend |
+| `app.py` | Original Streamlit interface retained for legacy/local use |
 
 ---
 
@@ -237,61 +783,70 @@ git clone https://github.com/Azoqoz/Semantic-Cache-for-LLM-Apps.git
 cd Semantic-Cache-for-LLM-Apps
 ```
 
+---
+
 ### 2. Create a Virtual Environment
 
-Windows PowerShell:
+#### Windows PowerShell
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-macOS/Linux:
+#### macOS / Linux
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install the Dependencies
+---
+
+### 3. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-The first run downloads `sentence-transformers/all-MiniLM-L6-v2`.
+The first local run may download:
+
+```text
+sentence-transformers/all-MiniLM-L6-v2
+```
+
+---
 
 ### 4. Configure the Environment
 
-Windows PowerShell:
+#### Windows
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-macOS/Linux:
+#### macOS / Linux
 
 ```bash
 cp .env.example .env
 ```
 
-Keep `APP_MODE=local` for local full mode, then add only the provider settings you need.
+Keep the local environment file outside version control.
 
 ---
 
-## Running the Application
+### 5. Install Frontend Dependencies
 
 ```bash
-streamlit run app.py
+cd frontend
+npm install
 ```
-
-Streamlit typically serves the local application at `http://localhost:8501`.
 
 ---
 
 ## Local Provider Configuration
 
-Create `.env` from `.env.example`. Only the credentials for providers you use are required:
+Example `.env`:
 
 ```dotenv
 APP_MODE=local
@@ -309,37 +864,182 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 ```
 
-Demo requires no API key. Ollama requires a local Ollama server but no cloud credential. Keep `.env` local and never commit secrets to Git.
+Only configure providers you intend to use.
+
+Demo Mode requires no provider credentials.
+
+Ollama requires a locally running Ollama server but no cloud API key.
+
+---
+
+## Running the Modern Frontend Locally
+
+From:
+
+```text
+frontend/
+```
+
+install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+The local frontend is typically available at:
+
+```text
+http://localhost:3000
+```
+
+Use the environment configuration documented in:
+
+```text
+frontend/.env.example
+```
+
+to connect the frontend to the appropriate semantic-cache runtime.
+
+---
+
+## Legacy Streamlit Interface
+
+The original Streamlit application remains available for local experimentation.
+
+Run:
+
+```bash
+streamlit run app.py
+```
+
+The interface is typically available at:
+
+```text
+http://localhost:8501
+```
+
+The legacy interface is retained for:
+
+- Development history
+- Local experimentation
+- Direct inspection of the original dashboard
+- Cache Explorer access
+- Threshold evaluation
+- Provider testing
+
+The current portfolio-facing frontend lives under:
+
+```text
+frontend/
+```
+
+---
+
+## Testing
+
+Run the Python test suite using:
+
+```bash
+python -m pytest
+```
+
+Use the latest local test run as the authoritative test count.
+
+Relevant test coverage includes areas such as:
+
+- Cache configuration
+- Cache persistence
+- Exact-match lookup
+- Semantic matching
+- TTL expiration
+- Provider/model isolation
+- Provider behavior
+- Embedding behavior
+- Evaluation dataset behavior
+- Threshold classification
+- Metrics
+- Public-demo restrictions
+- Local-full-mode behavior
+- Production embedding behavior
 
 ---
 
 ## Deployment
 
-To deploy on Streamlit Community Cloud:
+The current production architecture separates the frontend from the semantic-cache runtime.
 
-1. Push the repository to GitHub.
-2. Create a Streamlit Community Cloud application that uses `app.py` as its entry point.
-3. Set the public deployment mode in Streamlit secrets or the environment:
+### Frontend — Vercel
 
-```toml
-APP_MODE="demo"
+Production application:
+
+```text
+https://semantic-cache-for-llm-apps-wq2w.vercel.app
 ```
 
-4. Deploy and verify the Demo, Dashboard, Evaluation, and Technical tabs.
+The production frontend lives under:
 
-The public deployment must remain in Demo mode. Do not add OpenAI, Anthropic, Gemini, or other external provider API keys to the public demo.
+```text
+frontend/
+```
+
+and is deployed independently.
+
+---
+
+### Semantic Cache Runtime
+
+The Python runtime remains responsible for:
+
+- Question normalization
+- Embedding generation
+- Exact-match lookup
+- Semantic matching
+- TTL enforcement
+- Provider/model isolation
+- Provider invocation
+- SQLite persistence
+- Event tracking
+- Evaluation logic
+- Cache metrics
+
+Production deployments use the ONNX embedding path.
+
+---
+
+## Legacy Deployment
+
+The original version of the project was designed around Streamlit.
+
+Files such as:
+
+```text
+app.py
+.streamlit/
+```
+
+remain in the repository as part of the project's development history.
+
+The current portfolio-facing interface uses the dedicated modern frontend.
 
 ---
 
 ## Screenshots
 
-### Hosted Demo — Cache Miss
+The repository retains screenshots from the original interface.
 
-![Hosted Demo Cache Miss](assets/screenshots/hosted-cache-miss.png)
+### Cache Miss
 
-### Hosted Demo — Semantic Cache Hit
+![Cache Miss](assets/screenshots/hosted-cache-miss.png)
 
-![Hosted Demo Cache Hit](assets/screenshots/hosted-cache-hit.png)
+### Semantic Cache Hit
+
+![Semantic Cache Hit](assets/screenshots/hosted-cache-hit.png)
 
 ### Dashboard
 
@@ -357,46 +1057,98 @@ The public deployment must remain in Demo mode. Do not add OpenAI, Anthropic, Ge
 
 ## Current Limitations
 
-- SQLite similarity lookup scans valid rows and is intended for a portfolio-scale demo.
-- Semantic similarity does not guarantee factual equivalence.
-- Cost values are illustrative unless a provider supplies exact billing information.
-- Production deployments require additional tenant isolation, encryption, observability, and a vector index.
+- SQLite semantic lookup scans valid rows and is intended for portfolio-scale usage
+- Semantic similarity does not guarantee factual equivalence
+- A false-positive semantic cache hit can return an inappropriate stored response
+- Threshold selection depends on the target domain
+- Cost values are illustrative unless exact provider billing information is available
+- Provider behavior may change across models and versions
+- The 36-pair evaluation dataset is intentionally small
+- Evaluation performance on the included dataset does not establish general-domain cache safety
+- SQLite is not intended as a distributed multi-node semantic-cache backend
+- Production deployments require stronger tenant isolation
+- Production deployments require encryption controls
+- Production deployments require more comprehensive observability
+- Production deployments at larger scale require vector indexing
+- Sensitive-data persistence requires additional privacy controls
+- Cache invalidation currently relies primarily on TTL and manual deletion
 
 ---
 
 ## Future Improvements
 
-- Add Redis vector search for distributed cache access.
-- Introduce approximate nearest-neighbor indexing for larger cache collections.
-- Support multi-tenant namespaces and access isolation.
-- Add PII detection and filtering before persistence.
-- Implement automated invalidation policies beyond TTL.
-- Export traces and metrics through OpenTelemetry or Prometheus.
-- Add Docker packaging for reproducible local and hosted environments.
-- Expand unit and integration test coverage.
-- Add CI/CD checks for tests, formatting, and deployment.
-- Grow the evaluation dataset with domain-specific and adversarial pairs.
+- Add Redis-backed distributed cache storage
+- Add Redis vector search
+- Add approximate nearest-neighbor indexing
+- Add vector-database support
+- Add multi-tenant namespaces
+- Add tenant-level cache isolation
+- Add PII detection before persistence
+- Add sensitive-data filtering
+- Add automated invalidation policies
+- Add semantic cache versioning
+- Add provider-response version awareness
+- Add prompt-version isolation
+- Add embedding-model version isolation
+- Add OpenTelemetry tracing
+- Add Prometheus metrics
+- Add production audit logs
+- Add Docker packaging
+- Add continuous integration
+- Add automated deployment checks
+- Expand unit and integration tests
+- Expand the evaluation dataset
+- Add adversarial semantic-pair testing
+- Add domain-specific threshold profiles
+- Add richer cache analytics
+- Add cache-size and eviction policies
+- Add distributed concurrency controls
 
 ---
 
 ## Why This Project Matters
 
-This project demonstrates an AI engineering pattern that directly addresses two practical constraints in LLM applications: response latency and repeated inference cost. It goes beyond a simple prompt interface by treating semantic reuse as a measurable system with explicit persistence, evaluation, and operational boundaries.
+Semantic caching is more than storing text responses by exact key.
 
-The implementation demonstrates:
+A useful cache for LLM applications needs to reason about semantic equivalence while controlling the risk of reusing the wrong answer.
 
-- **Embeddings and semantic similarity** through local Sentence Transformer vectors and cosine comparison
-- **Cache architecture** through exact-match and threshold-based semantic lookup
-- **Persistent storage** through SQLite cache entries, TTL handling, query events, and metrics
-- **Provider abstraction** through a consistent interface for Demo, OpenAI, Claude, Gemini, and Ollama
-- **Latency optimization** by returning valid stored answers without another provider request
-- **Cost optimization** by estimating actual and avoided model-call cost
-- **Threshold evaluation** through labeled pairs, confusion counts, F1-based selection, and difficulty analysis
-- **Observability** through hit rate, latency, cache activity, and savings metrics
-- **Secure hosted/local separation** by disabling external providers and visitor credentials in public Demo mode
-- **Multi-provider integration** without mixing cache entries across providers or models when isolation is enabled
+This project demonstrates AI Engineering concepts including:
 
-Together, these capabilities show how an LLM feature can be designed as an observable, configurable, and security-conscious application component rather than a single model call.
+- Embedding generation
+- Semantic similarity
+- Cosine similarity
+- Exact-match caching
+- Semantic caching
+- Persistent cache architecture
+- SQLite persistence
+- TTL expiration
+- Provider/model isolation
+- Multi-provider LLM integration
+- Offline local embeddings
+- ONNX production inference
+- Cache-hit and cache-miss orchestration
+- Latency optimization
+- Inference-cost reduction
+- Threshold tuning
+- Classification metrics
+- Confusion-matrix analysis
+- F1-based threshold selection
+- Difficulty-based evaluation
+- Operational metrics
+- Cache observability
+- Safe hosted-demo design
+- Local/full-mode separation
+- Modern frontend integration
+- Production deployment
+- Modular application architecture
+
+The project shows how repeated LLM inference can be reduced through a measurable semantic-reuse layer while preserving explicit thresholds, expiration rules, provider isolation, evaluation, and observability.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
 
 ---
 
